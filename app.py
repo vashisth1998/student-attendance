@@ -14,29 +14,29 @@ daily_files = st.file_uploader("Daily CSV files upload karein", type=['csv'], ac
 if st.button("Calculate Attendance"):
     if master_file is not None and len(daily_files) > 0:
         try:
-            # Master file load kar rahe hain (ab yeh CSV aur Excel dono handle karega)
+            # Master file load kar rahe hain
             if master_file.name.endswith('.csv'):
                 master_df = pd.read_csv(master_file)
             else:
                 master_df = pd.read_excel(master_file)
             
-            # Agar 'Total Attendance' column pehle se nahi hai toh naya banayein
             if 'Total Attendance' not in master_df.columns:
                 master_df['Total Attendance'] = 0
             
-            # NAYA SMART LOGIC FUNCTION
+            # ALL POSSIBILITIES LOGIC
             def get_valid_names(row):
                 name = str(row.get('Student Name', '')).replace('nan', '').strip().lower()
                 p_id = str(row.get('pariticipant_id', '')).replace('nan', '').strip().lower() 
                 
                 last_3_digits = p_id[-3:] if len(p_id) >= 3 else p_id
                 
-                valid_names = [name]                                # 1. Exact Name
-                valid_names.append(f"{name}-{last_3_digits}")       # 2. Full Name - ID
+                valid_names = [name]                                    # 1. Exact Name (mohd amaan)
+                valid_names.append(f"{name}-{last_3_digits}")           # 2. Full Name + ID (mohd amaan-035)
+                valid_names.append(f"{name.replace(' ', '')}-{last_3_digits}") # 3. No Space + ID (mohdamaan-035)
                 
-                # 3. First Name - ID (eg. 'akash-047' for 'akash kumar')
-                first_name = name.split(" ")[0] if " " in name else name
-                valid_names.append(f"{first_name}-{last_3_digits}")
+                # 4. Name ke har ek part (First, Middle, Last) ke sath ID (mohd-035, amaan-035)
+                for part in name.split():
+                    valid_names.append(f"{part}-{last_3_digits}")
                 
                 return valid_names
 
@@ -53,7 +53,7 @@ if st.button("Calculate Attendance"):
                     daily_df[col_name] = daily_df[col_name].fillna("")
                     raw_names = daily_df[col_name].astype(str).str.strip().str.lower().tolist()
                     
-                    # NAYA: Underscore ko hyphen mein badalna aur spaces hatana
+                    # Underscore aur extra spaces hatana
                     cleaned_attended_names = [
                         str(n).replace("_", "-").replace(" - ", "-").replace(" -", "-").replace("- ", "-") 
                         for n in raw_names
@@ -62,7 +62,7 @@ if st.button("Calculate Attendance"):
                     for index, row in master_df.iterrows():
                         valid_names = get_valid_names(row)
                         
-                        # Partial match logic (taaki anjali_010 jaise easily catch ho jayein)
+                        # Match logic
                         if any(any(v_name == d_name or v_name in d_name for d_name in cleaned_attended_names) for v_name in valid_names if v_name):
                             master_df.at[index, 'Total Attendance'] += 1
                 else:
