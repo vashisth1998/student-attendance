@@ -22,25 +22,23 @@ if st.button("Calculate Attendance"):
             # Agar 'Total Attendance' column pehle se nahi hai toh naya banayein
             master_df['Total Attendance'] = 0
             
-            # Master file ke exact column names use kiye hain
+            # Master file ke valid names generate karna
             def get_valid_names(row):
-                name = str(row.get('Student Name', '')).strip()
-                # 'pariticipant_id' ki exact spelling jo aapki Excel image mein hai
-                p_id = str(row.get('pariticipant_id', '')).strip() 
+                name = str(row.get('Student Name', '')).strip().lower()
+                p_id = str(row.get('pariticipant_id', '')).strip().lower() 
                 
                 last_3_digits = p_id[-3:] if len(p_id) >= 3 else p_id
                 
-                # Dono combinations banaye hain (with space and without space)
+                # Standard format without spaces around hyphen
                 name_with_id = f"{name}-{last_3_digits}"
-                name_with_space_id = f"{name} - {last_3_digits}"
                 
-                return [name.lower(), name_with_id.lower(), name_with_space_id.lower()]
+                return [name, name_with_id]
 
             # Daily files check kar rahe hain
             for file in daily_files:
                 daily_df = pd.read_csv(file)
                 
-                # Daily CSV mein jis bhi column mein "name" ya "participant" likha hoga, usko dhundega
+                # Column name dhoondna (Participant Name ya Name)
                 col_name = None
                 for col in daily_df.columns:
                     if 'name' in col.lower() or 'participant' in col.lower():
@@ -48,16 +46,25 @@ if st.button("Calculate Attendance"):
                         break
                 
                 if col_name:
-                    # Daily file ke saare names ko lower case mein list bana lenge
-                    attended_names = daily_df[col_name].astype(str).str.strip().str.lower().tolist()
+                    # Daily CSV ke names ko lower case mein karke list banana
+                    raw_names = daily_df[col_name].astype(str).str.strip().str.lower().tolist()
                     
+                    # Hyphen ke aaspas ke saare extra spaces hatana (Normalizing)
+                    # "aditya - 058", "aditya -058", "aditya- 058" sab "aditya-058" ban jayenge
+                    cleaned_attended_names = [
+                        name.replace(" - ", "-").replace(" -", "-").replace("- ", "-") 
+                        for name in raw_names
+                    ]
+                    
+                    # Attendance Match karna
                     for index, row in master_df.iterrows():
                         valid_names = get_valid_names(row)
-                        # Agar dono mein se koi bhi naam daily file mein milta hai, toh attendance +1 karein
-                        if any(v_name in attended_names for v_name in valid_names):
+                        
+                        # Agar exact name ya name-id milta hai
+                        if any(v_name in cleaned_attended_names for v_name in valid_names):
                             master_df.at[index, 'Total Attendance'] += 1
                 else:
-                    st.warning(f"File {file.name} mein 'Name' wala koi column nahi mila. Kripya file check karein.")
+                    st.warning(f"File {file.name} mein 'Name' wala koi column nahi mila.")
 
             st.success("Attendance successfully calculate ho gayi hai! 🎉")
             
