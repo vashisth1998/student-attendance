@@ -48,8 +48,6 @@ if st.button("Calculate Attendance"):
                             clean_letters = re.sub(r'[^a-z]', '', str(raw).lower())
                             numbers_in_raw_str = re.findall(r'\d+', str(raw))
                             nums_in_raw = [int(x) for x in numbers_in_raw_str]
-                            
-                            # Extract exactly the LAST number used in the name
                             last_num = int(numbers_in_raw_str[-1]) if numbers_in_raw_str else -1
                             
                             daily_records.append({
@@ -82,32 +80,23 @@ if st.button("Calculate Attendance"):
                             d_letters = record['letters']
                             d_nums = record['nums']
                             
-                            # --- RULE 1: STRICT LAST DIGIT MATCH ---
-                            # Agar aakhri number bache ki ID se exactly match karta hai
+                            # RULE 1: STRICT LAST DIGIT MATCH
                             if target_id_int != -1 and record['last_num'] == target_id_int:
                                 student_matched = True
                                 
-                            # Agar number match nahi hua, toh aage name prefix/suffix match karenge
+                            # RULE 2: AGGRESSIVE NAME MATCH
                             if not student_matched and clean_full_name:
-                                
-                                # --- RULE 2: AGGRESSIVE NAME MATCH (Prefix & Suffix) ---
-                                # Check if full clean name is hidden inside daily name
                                 if clean_full_name in d_letters:
                                     student_matched = True
-                                # Check if daily name is a valid chunk of full name (e.g. 'ananya' in 'ananyapandey')
                                 elif d_letters and d_letters in clean_full_name and len(d_letters) >= 3:
                                     student_matched = True
                                 elif first_name:
-                                    # Daily letters matches first name exactly
                                     if d_letters == first_name:
                                         student_matched = True
-                                    # First name starts with daily letters (Prefix: 'bhum' -> 'bhumika')
                                     elif len(d_letters) >= 3 and first_name.startswith(d_letters):
                                         student_matched = True
-                                    # Daily letters contains the first name (Suffix/Hidden: 'kumarbhumika')
                                     elif len(first_name) >= 3 and first_name in d_letters:
                                         student_matched = True
-                                    # Try other parts (last name / middle name)
                                     else:
                                         for part in valid_parts:
                                             if len(part) >= 3 and part in d_letters:
@@ -131,11 +120,26 @@ if st.button("Calculate Attendance"):
 
             st.success("Attendance successfully calculate ho gayi hai! 🎉")
             
+            # --- CALCULATING PRESENT & ABSENT ---
             total_students = len(master_df)
             present_today = (master_df['Total Attendance'] > 0).sum()
+            absent_today = total_students - present_today
             
-            st.metric(label="🟢 Today Total Present Students", value=f"{present_today} / {total_students}")
+            # --- NAYA CODE: Metrics in 2 Columns ---
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric(label="🟢 Total Present", value=f"{present_today} / {total_students}")
+            with col2:
+                st.metric(label="🔴 Total Absent", value=f"{absent_today} / {total_students}")
             
+            # --- NAYA CODE: Absent Students List (Dropdown) ---
+            if absent_today > 0:
+                absent_df = master_df[master_df['Total Attendance'] == 0]
+                with st.expander("🔴 Click here to view Absent Students List"):
+                    for _, row in absent_df.iterrows():
+                        st.write(f"❌ **{row.get('Student Name', 'Unknown')}** (ID: {row.get('pariticipant_id', 'N/A')})")
+            
+            # Unmatched names warning
             if all_unmatched_names:
                 st.warning("⚠️ Neeche diye gaye naam Master list se match nahi hue:")
                 st.write(list(set(all_unmatched_names))) 
