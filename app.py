@@ -24,8 +24,8 @@ if st.button("Calculate Attendance"):
             
             # Master file ke valid names generate karna
             def get_valid_names(row):
-                name = str(row.get('Student Name', '')).strip().lower()
-                p_id = str(row.get('pariticipant_id', '')).strip().lower() 
+                name = str(row.get('Student Name', '')).replace('nan', '').strip().lower()
+                p_id = str(row.get('pariticipant_id', '')).replace('nan', '').strip().lower() 
                 
                 last_3_digits = p_id[-3:] if len(p_id) >= 3 else p_id
                 
@@ -46,13 +46,15 @@ if st.button("Calculate Attendance"):
                         break
                 
                 if col_name:
+                    # NAYA LOGIC: Khali cells (NaN / floats) ko blank text se replace karna
+                    daily_df[col_name] = daily_df[col_name].fillna("")
+                    
                     # Daily CSV ke names ko lower case mein karke list banana
                     raw_names = daily_df[col_name].astype(str).str.strip().str.lower().tolist()
                     
-                    # Hyphen ke aaspas ke saare extra spaces hatana (Normalizing)
-                    # "aditya - 058", "aditya -058", "aditya- 058" sab "aditya-058" ban jayenge
+                    # Hyphen ke aaspas ke saare extra spaces hatana (aur ensure karna ki woh string ho)
                     cleaned_attended_names = [
-                        name.replace(" - ", "-").replace(" -", "-").replace("- ", "-") 
+                        str(name).replace(" - ", "-").replace(" -", "-").replace("- ", "-") 
                         for name in raw_names
                     ]
                     
@@ -60,8 +62,8 @@ if st.button("Calculate Attendance"):
                     for index, row in master_df.iterrows():
                         valid_names = get_valid_names(row)
                         
-                        # Agar exact name ya name-id milta hai
-                        if any(v_name in cleaned_attended_names for v_name in valid_names):
+                        # Agar exact name ya name-id milta hai (aur naam blank nahi hai)
+                        if any(v_name in cleaned_attended_names for v_name in valid_names if v_name):
                             master_df.at[index, 'Total Attendance'] += 1
                 else:
                     st.warning(f"File {file.name} mein 'Name' wala koi column nahi mila.")
