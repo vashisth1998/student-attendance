@@ -15,7 +15,6 @@ daily_files = st.file_uploader("Daily CSV files upload karein", type=['csv'], ac
 if st.button("Calculate Attendance"):
     if master_file is not None and len(daily_files) > 0:
         try:
-            # File reading
             if master_file.name.endswith('.csv'):
                 master_df = pd.read_csv(master_file)
             else:
@@ -41,56 +40,73 @@ if st.button("Calculate Attendance"):
                     raw_names = daily_df[col_name].astype(str).str.strip().tolist()
                     
                     matched_in_this_file = set()
-                    cleaned_to_raw_map = {}
+                    daily_records = []
                     
-                    # SUPER CLEANING: Sirf alphabets aur numbers rakhenge
-                    # Matalab '1-Anirudh-004' ban jayega '1anirudh004'
+                    # NAYA LOGIC: Naam aur numbers ko bilkul alag-alag todna
                     for raw in raw_names:
                         if raw:
-                            clean_name = re.sub(r'[^a-z0-9]', '', str(raw).lower())
-                            cleaned_to_raw_map[clean_name] = raw
+                            # Sirf letters (typo check ke liye)
+                            clean_letters = re.sub(r'[^a-z]', '', str(raw).lower())
+                            # Sirf numbers ki list (mathematical check ke liye e.g., '009' becomes 9)
+                            nums_in_raw = [int(x) for x in re.findall(r'\d+', str(raw))]
+                            # Pure clean text (fallback ke liye)
+                            clean_all = re.sub(r'[^a-z0-9]', '', str(raw).lower())
+                            
+                            daily_records.append({
+                                'raw': raw,
+                                'letters': clean_letters,
+                                'nums': nums_in_raw,
+                                'clean_all': clean_all
+                            })
                     
                     for index, row in master_df.iterrows():
                         name = str(row.get('Student Name', '')).replace('nan', '').strip().lower()
                         p_id = str(row.get('pariticipant_id', '')).replace('nan', '').strip().lower() 
                         
-                        last_3 = p_id[-3:] if len(p_id) >= 3 else p_id
+                        last_3_str = p_id[-3:] if len(p_id) >= 3 else p_id
+                        
+                        # Master ID ke last 3 digits ko number mein convert karna (e.g., '055' -> 55)
+                        try:
+                            target_id_int = int(last_3_str)
+                        except:
+                            target_id_int = -1
+                            
                         name_parts = name.split()
                         first_name = name_parts[0] if name_parts else name
-                        first_4 = first_name[:4] if len(first_name) >= 4 else first_name
+                        first_3 = first_name[:3] if len(first_name) >= 3 else first_name
                         name_no_space = name.replace(" ", "")
 
                         student_matched = False
                         
-                        for clean_name in cleaned_to_raw_map.keys():
-                            # LOGIC 1: Agar string mein 3-digit ID present hai
-                            if last_3 in clean_name:
-                                # Name cross-verification (First name ya 4 letters hone chahiye taaki kisi aur ka ID na match ho jaye)
-                                if first_name in clean_name or first_4 in clean_name:
+                        for record in daily_records:
+                            # CONDITION 1: Exact Number Match (Agar bache ne 55 ya 055 kuch bhi likha ho)
+                            if target_id_int != -1 and target_id_int in record['nums']:
+                                # Cross verify: Kya naam ke pehle 3 letters match ho rahe hain?
+                                if first_3 in record['letters']:
                                     student_matched = True
                                 else:
-                                    # Agar first name nahi, toh last/middle name se verify karein
+                                    # Agar first name nahi, toh last name check karein
                                     for part in name_parts:
-                                        if len(part) >= 3 and part in clean_name:
+                                        if len(part) >= 3 and part[:3] in record['letters']:
                                             student_matched = True
                                             break
                             
-                            # LOGIC 2: Bina ID wale bache (Sirf naam daala hai)
+                            # CONDITION 2: Bina ID ke bache (Jinhone sirf naam likha hai)
                             if not student_matched:
-                                if clean_name == name_no_space or clean_name == first_name:
+                                if record['letters'] == name_no_space or record['letters'] == first_name:
+                                    student_matched = True
+                                elif last_3_str in record['clean_all'] and first_3 in record['clean_all']:
                                     student_matched = True
                                     
                             if student_matched:
-                                matched_in_this_file.add(clean_name)
-                                break # Bacha mil gaya, aage search band karein
+                                matched_in_this_file.add(record['raw'])
+                                master_df.at[index, 'Total Attendance'] += 1
+                                break
                                 
-                        if student_matched:
-                            master_df.at[index, 'Total Attendance'] += 1
-                            
-                    # Find unmatched names to show warning
-                    for clean_name, raw_name in cleaned_to_raw_map.items():
-                        if clean_name not in matched_in_this_file:
-                            all_unmatched_names.append(raw_name)
+                    # Unmatched check
+                    for record in daily_records:
+                        if record['raw'] not in matched_in_this_file:
+                            all_unmatched_names.append(record['raw'])
                             
                 else:
                     st.warning(f"File {file.name} mein 'Name' wala koi column nahi mila.")
@@ -103,7 +119,7 @@ if st.button("Calculate Attendance"):
             st.metric(label="🟢 Today Total Present Students", value=f"{present_today} / {total_students}")
             
             if all_unmatched_names:
-                st.warning("⚠️ Neeche diye gaye naam Master list se match nahi hue (Yeh teacher ho sakte hain ya typo ho sakta hai):")
+                st.warning("⚠️ Neeche diye gaye naam Master list se match nahi hue:")
                 st.write(list(set(all_unmatched_names))) 
 
             st.dataframe(master_df) 
