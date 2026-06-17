@@ -5,40 +5,44 @@ st.set_page_config(page_title="Attendance Tracker", layout="centered")
 st.title("Attendance Tracker App 📊")
 st.write("Apni Master Excel file aur Daily CSV files upload karein aur total attendance nikalein.")
 
-# 1. Upload Files
 st.subheader("1. Upload Master Data")
-master_file = st.file_uploader("Master Excel File upload karein (xlsx)", type=['xlsx'])
+master_file = st.file_uploader("Master Excel File upload karein (xlsx/csv)", type=['xlsx', 'csv'])
 
 st.subheader("2. Upload Daily Attendance")
 daily_files = st.file_uploader("Daily CSV files upload karein", type=['csv'], accept_multiple_files=True)
 
-# 2. Logic & Calculation
 if st.button("Calculate Attendance"):
     if master_file is not None and len(daily_files) > 0:
         try:
-            # Master file load kar rahe hain
-            master_df = pd.read_excel(master_file)
+            # Master file load kar rahe hain (ab yeh CSV aur Excel dono handle karega)
+            if master_file.name.endswith('.csv'):
+                master_df = pd.read_csv(master_file)
+            else:
+                master_df = pd.read_excel(master_file)
             
             # Agar 'Total Attendance' column pehle se nahi hai toh naya banayein
-            master_df['Total Attendance'] = 0
+            if 'Total Attendance' not in master_df.columns:
+                master_df['Total Attendance'] = 0
             
-            # Master file ke valid names generate karna
+            # NAYA SMART LOGIC FUNCTION
             def get_valid_names(row):
                 name = str(row.get('Student Name', '')).replace('nan', '').strip().lower()
                 p_id = str(row.get('pariticipant_id', '')).replace('nan', '').strip().lower() 
                 
                 last_3_digits = p_id[-3:] if len(p_id) >= 3 else p_id
                 
-                # Standard format without spaces around hyphen
-                name_with_id = f"{name}-{last_3_digits}"
+                valid_names = [name]                                # 1. Exact Name
+                valid_names.append(f"{name}-{last_3_digits}")       # 2. Full Name - ID
                 
-                return [name, name_with_id]
+                # 3. First Name - ID (eg. 'akash-047' for 'akash kumar')
+                first_name = name.split(" ")[0] if " " in name else name
+                valid_names.append(f"{first_name}-{last_3_digits}")
+                
+                return valid_names
 
-            # Daily files check kar rahe hain
             for file in daily_files:
                 daily_df = pd.read_csv(file)
                 
-                # Column name dhoondna (Participant Name ya Name)
                 col_name = None
                 for col in daily_df.columns:
                     if 'name' in col.lower() or 'participant' in col.lower():
@@ -46,34 +50,27 @@ if st.button("Calculate Attendance"):
                         break
                 
                 if col_name:
-                    # NAYA LOGIC: Khali cells (NaN / floats) ko blank text se replace karna
                     daily_df[col_name] = daily_df[col_name].fillna("")
-                    
-                    # Daily CSV ke names ko lower case mein karke list banana
                     raw_names = daily_df[col_name].astype(str).str.strip().str.lower().tolist()
                     
-                    # Hyphen ke aaspas ke saare extra spaces hatana (aur ensure karna ki woh string ho)
+                    # NAYA: Underscore ko hyphen mein badalna aur spaces hatana
                     cleaned_attended_names = [
-                        str(name).replace(" - ", "-").replace(" -", "-").replace("- ", "-") 
-                        for name in raw_names
+                        str(n).replace("_", "-").replace(" - ", "-").replace(" -", "-").replace("- ", "-") 
+                        for n in raw_names
                     ]
                     
-                    # Attendance Match karna
                     for index, row in master_df.iterrows():
                         valid_names = get_valid_names(row)
                         
-                        # Agar exact name ya name-id milta hai (aur naam blank nahi hai)
-                        if any(v_name in cleaned_attended_names for v_name in valid_names if v_name):
+                        # Partial match logic (taaki anjali_010 jaise easily catch ho jayein)
+                        if any(any(v_name == d_name or v_name in d_name for d_name in cleaned_attended_names) for v_name in valid_names if v_name):
                             master_df.at[index, 'Total Attendance'] += 1
                 else:
                     st.warning(f"File {file.name} mein 'Name' wala koi column nahi mila.")
 
             st.success("Attendance successfully calculate ho gayi hai! 🎉")
-            
-            # App par result dikhane ke liye
             st.dataframe(master_df) 
 
-            # 3. Download ka button
             csv = master_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download Final Report",
