@@ -22,19 +22,20 @@ if st.button("Calculate Attendance"):
             
             if 'Total Attendance' not in master_df.columns:
                 master_df['Total Attendance'] = 0
+            else:
+                master_df['Total Attendance'] = 0 # Resetting to 0 for fresh calculation
             
-            # ALL POSSIBILITIES LOGIC
+            # All possibilities logic function
             def get_valid_names(row):
                 name = str(row.get('Student Name', '')).replace('nan', '').strip().lower()
                 p_id = str(row.get('pariticipant_id', '')).replace('nan', '').strip().lower() 
                 
                 last_3_digits = p_id[-3:] if len(p_id) >= 3 else p_id
                 
-                valid_names = [name]                                    # 1. Exact Name (mohd amaan)
-                valid_names.append(f"{name}-{last_3_digits}")           # 2. Full Name + ID (mohd amaan-035)
-                valid_names.append(f"{name.replace(' ', '')}-{last_3_digits}") # 3. No Space + ID (mohdamaan-035)
+                valid_names = [name]                                    
+                valid_names.append(f"{name}-{last_3_digits}")           
+                valid_names.append(f"{name.replace(' ', '')}-{last_3_digits}") 
                 
-                # 4. Name ke har ek part (First, Middle, Last) ke sath ID (mohd-035, amaan-035)
                 for part in name.split():
                     valid_names.append(f"{part}-{last_3_digits}")
                 
@@ -53,7 +54,6 @@ if st.button("Calculate Attendance"):
                     daily_df[col_name] = daily_df[col_name].fillna("")
                     raw_names = daily_df[col_name].astype(str).str.strip().str.lower().tolist()
                     
-                    # Underscore aur extra spaces hatana
                     cleaned_attended_names = [
                         str(n).replace("_", "-").replace(" - ", "-").replace(" -", "-").replace("- ", "-") 
                         for n in raw_names
@@ -62,13 +62,21 @@ if st.button("Calculate Attendance"):
                     for index, row in master_df.iterrows():
                         valid_names = get_valid_names(row)
                         
-                        # Match logic
                         if any(any(v_name == d_name or v_name in d_name for d_name in cleaned_attended_names) for v_name in valid_names if v_name):
                             master_df.at[index, 'Total Attendance'] += 1
                 else:
                     st.warning(f"File {file.name} mein 'Name' wala koi column nahi mila.")
 
             st.success("Attendance successfully calculate ho gayi hai! 🎉")
+            
+            # --- NAYA CODE: Today Present Count Summary ---
+            total_students = len(master_df)
+            present_today = (master_df['Total Attendance'] > 0).sum()
+            
+            # Ek khoobsurat metric box dikhane ke liye
+            st.metric(label="🟢 Today Total Present Students", value=f"{present_today} / {total_students}")
+            # -----------------------------------------------
+
             st.dataframe(master_df) 
 
             csv = master_df.to_csv(index=False).encode('utf-8')
