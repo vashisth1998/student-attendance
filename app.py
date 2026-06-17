@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 
 st.set_page_config(page_title="Attendance Tracker", layout="centered")
 st.title("Attendance Tracker App 📊")
@@ -23,18 +24,6 @@ if st.button("Calculate Attendance"):
                 master_df['Total Attendance'] = 0
             else:
                 master_df['Total Attendance'] = 0 
-            
-            def get_valid_names(row):
-                name = str(row.get('Student Name', '')).replace('nan', '').strip().lower()
-                p_id = str(row.get('pariticipant_id', '')).replace('nan', '').strip().lower() 
-                last_3_digits = p_id[-3:] if len(p_id) >= 3 else p_id
-                
-                valid_names = [name]                                    
-                valid_names.append(f"{name}-{last_3_digits}")           
-                valid_names.append(f"{name.replace(' ', '')}-{last_3_digits}") 
-                for part in name.split():
-                    valid_names.append(f"{part}-{last_3_digits}")
-                return valid_names
 
             all_unmatched_names = []
 
@@ -53,27 +42,55 @@ if st.button("Calculate Attendance"):
                     matched_in_this_file = set()
                     cleaned_to_raw_map = {}
                     
-                    # Mapping cleaned names to original names for display
+                    # SUPER CLEANING: Sirf alphabets aur numbers rakhenge
                     for raw in raw_names:
                         if raw:
-                            clean_name = str(raw).lower().replace("_", "-").replace(" - ", "-").replace(" -", "-").replace("- ", "-")
+                            clean_name = re.sub(r'[^a-z0-9]', '', str(raw).lower())
                             cleaned_to_raw_map[clean_name] = raw
                     
                     for index, row in master_df.iterrows():
-                        valid_names = get_valid_names(row)
+                        name = str(row.get('Student Name', '')).replace('nan', '').strip().lower()
+                        p_id = str(row.get('pariticipant_id', '')).replace('nan', '').strip().lower() 
+                        
+                        last_3 = p_id[-3:] if len(p_id) >= 3 else p_id
+                        first_name = name.split()[0] if " " in name else name
+                        name_no_space = name.replace(" ", "")
+                        
+                        # 1. Without ID targets (Safe for exact match)
+                        valid_exact_only = set([name_no_space, first_name])
+                        for part in name.split():
+                            valid_exact_only.add(part)
+
+                        # 2. With ID targets (Safe for substring match like abhi046)
+                        valid_with_id = set()
+                        valid_with_id.add(f"{name_no_space}{last_3}")
+                        valid_with_id.add(f"{first_name}{last_3}")
+                        if len(first_name) >= 4: valid_with_id.add(f"{first_name[:4]}{last_3}") # First 4 chars + ID
+                        if len(first_name) >= 5: valid_with_id.add(f"{first_name[:5]}{last_3}") # First 5 chars + ID
+
                         student_matched = False
                         
                         for clean_name in cleaned_to_raw_map.keys():
-                            if any(any(v_name == clean_name or v_name in clean_name for clean_name in cleaned_to_raw_map.keys()) for v_name in valid_names if v_name):
-                                # More precise matching logic
-                                if any(v == clean_name or v in clean_name for v in valid_names if v):
+                            # Condition 1: Exact Name Match (bina ID ke aaye bacho ke liye)
+                            if clean_name in valid_exact_only:
+                                student_matched = True
+                                matched_in_this_file.add(clean_name)
+                                break
+                            
+                            # Condition 2: Short Name/Full Name with ID (e.g., abhi046, akash047)
+                            for v_id in valid_with_id:
+                                if v_id in clean_name:
                                     student_matched = True
                                     matched_in_this_file.add(clean_name)
+                                    break
+                                    
+                            if student_matched:
+                                break
                                 
                         if student_matched:
                             master_df.at[index, 'Total Attendance'] += 1
                             
-                    # Find unmatched for this file
+                    # Unmatched names collect karna
                     for clean_name, raw_name in cleaned_to_raw_map.items():
                         if clean_name not in matched_in_this_file:
                             all_unmatched_names.append(raw_name)
@@ -88,11 +105,9 @@ if st.button("Calculate Attendance"):
             
             st.metric(label="🟢 Today Total Present Students", value=f"{present_today} / {total_students}")
             
-            # --- UNMATCHED NAMES DISPLAY ---
             if all_unmatched_names:
-                st.warning("⚠️ Neeche diye gaye naam Master list se match nahi hue (Ya toh yeh duplicate hain, teacher hain, ya inme typo hai):")
-                st.write(list(set(all_unmatched_names))) # set to remove exact duplicates
-            # -------------------------------
+                st.warning("⚠️ Neeche diye gaye naam Master list se match nahi hue:")
+                st.write(list(set(all_unmatched_names))) 
 
             st.dataframe(master_df) 
 
