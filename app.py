@@ -45,11 +45,8 @@ if st.button("Calculate Attendance"):
                     # NAYA LOGIC: Naam aur numbers ko bilkul alag-alag todna
                     for raw in raw_names:
                         if raw:
-                            # Sirf letters (typo check ke liye)
                             clean_letters = re.sub(r'[^a-z]', '', str(raw).lower())
-                            # Sirf numbers ki list (mathematical check ke liye e.g., '009' becomes 9)
                             nums_in_raw = [int(x) for x in re.findall(r'\d+', str(raw))]
-                            # Pure clean text (fallback ke liye)
                             clean_all = re.sub(r'[^a-z0-9]', '', str(raw).lower())
                             
                             daily_records.append({
@@ -65,45 +62,72 @@ if st.button("Calculate Attendance"):
                         
                         last_3_str = p_id[-3:] if len(p_id) >= 3 else p_id
                         
-                        # Master ID ke last 3 digits ko number mein convert karna (e.g., '055' -> 55)
                         try:
                             target_id_int = int(last_3_str)
                         except:
                             target_id_int = -1
                             
                         name_parts = name.split()
-                        first_name = name_parts[0] if name_parts else name
-                        first_3 = first_name[:3] if len(first_name) >= 3 else first_name
-                        name_no_space = name.replace(" ", "")
-
-                        student_matched = False
+                        clean_name_parts = [re.sub(r'[^a-z]', '', p) for p in name_parts]
+                        valid_parts = [p for p in clean_name_parts if len(p) >= 3]
+                        if not valid_parts:
+                            valid_parts = clean_name_parts
                         
+                        clean_first_name = valid_parts[0] if valid_parts else ""
+                        name_no_space = re.sub(r'[^a-z]', '', name)
+
+                        student_present_today = False
+                        
+                        # Har bache ko daily records mein dhoondhna
                         for record in daily_records:
-                            # CONDITION 1: Exact Number Match (Agar bache ne 55 ya 055 kuch bhi likha ho)
-                            if target_id_int != -1 and target_id_int in record['nums']:
-                                # Cross verify: Kya naam ke pehle 3 letters match ho rahe hain?
-                                if first_3 in record['letters']:
-                                    student_matched = True
-                                else:
-                                    # Agar first name nahi, toh last name check karein
-                                    for part in name_parts:
-                                        if len(part) >= 3 and part[:3] in record['letters']:
-                                            student_matched = True
-                                            break
+                            student_matched = False
+                            has_id_match = False
                             
-                            # CONDITION 2: Bina ID ke bache (Jinhone sirf naam likha hai)
-                            if not student_matched:
-                                if record['letters'] == name_no_space or record['letters'] == first_name:
+                            # CONDITION 1: Check ID presence
+                            if last_3_str and last_3_str in record['clean_all']:
+                                has_id_match = True
+                            elif target_id_int != -1:
+                                for n in record['nums']:
+                                    # Agar bache ne poori ID 26055 bhi likhi hogi, toh % 1000 usko 55 pakad lega
+                                    if n == target_id_int or n % 1000 == target_id_int or n % 10000 == target_id_int:
+                                        has_id_match = True
+                                        break
+                            
+                            # CONDITION 2: Cross-verify Name if ID matched
+                            if has_id_match:
+                                name_verified = False
+                                for part in valid_parts:
+                                    if len(part) >= 3:
+                                        if part[:3] in record['letters']:
+                                            name_verified = True
+                                            break
+                                    else:
+                                        if part in record['letters']:
+                                            name_verified = True
+                                            break
+                                if name_verified:
                                     student_matched = True
-                                elif last_3_str in record['clean_all'] and first_3 in record['clean_all']:
+                                    
+                            # CONDITION 3: Bina ID ke bache (Jinhone sirf naam likha hai)
+                            if not student_matched and clean_first_name:
+                                if record['letters'] == name_no_space:
+                                    student_matched = True
+                                elif record['letters'] == clean_first_name:
+                                    student_matched = True
+                                elif record['letters'].startswith(clean_first_name) and len(record['letters']) >= len(clean_first_name):
+                                    student_matched = True
+                                elif record['letters'] in valid_parts:
                                     student_matched = True
                                     
                             if student_matched:
                                 matched_in_this_file.add(record['raw'])
-                                master_df.at[index, 'Total Attendance'] += 1
-                                break
+                                student_present_today = True # Bache ki entry mil gayi
                                 
-                    # Unmatched check
+                        # Loop ke baad: Agar bacha kisi bhi naam se present tha, toh 1 attendance badhao
+                        if student_present_today:
+                            master_df.at[index, 'Total Attendance'] += 1
+                                
+                    # End of file: Jo bach gaye, sirf unhe unmatched mein dalo
                     for record in daily_records:
                         if record['raw'] not in matched_in_this_file:
                             all_unmatched_names.append(record['raw'])
