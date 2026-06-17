@@ -2,15 +2,16 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.set_page_config(page_title="Attendance Tracker", layout="centered")
+# Layout 'wide' kar diya taaki zyada columns aaram se dikhein
+st.set_page_config(page_title="Attendance Tracker", layout="wide")
 st.title("Attendance Tracker App 📊")
-st.write("Apni Master Excel file aur Daily CSV files upload karein aur total attendance nikalein.")
+st.write("Apni Master Excel file aur Daily CSV files upload karein aur date-wise attendance compile karein.")
 
 st.subheader("1. Upload Master Data")
 master_file = st.file_uploader("Master Excel File upload karein (xlsx/csv)", type=['xlsx', 'csv'])
 
 st.subheader("2. Upload Daily Attendance")
-daily_files = st.file_uploader("Daily CSV files upload karein", type=['csv'], accept_multiple_files=True)
+daily_files = st.file_uploader("Daily CSV files upload karein (Ek sath bahut saari select karein)", type=['csv'], accept_multiple_files=True)
 
 if st.button("Calculate Attendance"):
     if master_file is not None and len(daily_files) > 0:
@@ -20,14 +21,15 @@ if st.button("Calculate Attendance"):
             else:
                 master_df = pd.read_excel(master_file)
             
-            if 'Total Attendance' not in master_df.columns:
-                master_df['Total Attendance'] = 0
-            else:
-                master_df['Total Attendance'] = 0 
+            master_df['Total Attendance'] = 0 
 
             all_unmatched_names = []
 
             for file in daily_files:
+                # NAYA FEATURE: Har upload hui file ke naam ka ek naya column banayenge
+                date_col_name = f"{file.name}"
+                master_df[date_col_name] = "A" # Default sabko Absent ('A') mark karenge
+                
                 daily_df = pd.read_csv(file)
                 col_name = None
                 for col in daily_df.columns:
@@ -42,7 +44,6 @@ if st.button("Calculate Attendance"):
                     matched_in_this_file = set()
                     daily_records = []
                     
-                    # RECORD PREPARATION
                     for raw in raw_names:
                         if raw:
                             clean_letters = re.sub(r'[^a-z]', '', str(raw).lower())
@@ -78,7 +79,6 @@ if st.button("Calculate Attendance"):
                         for record in daily_records:
                             student_matched = False
                             d_letters = record['letters']
-                            d_nums = record['nums']
                             
                             # RULE 1: STRICT LAST DIGIT MATCH
                             if target_id_int != -1 and record['last_num'] == target_id_int:
@@ -109,51 +109,42 @@ if st.button("Calculate Attendance"):
                                 
                         if student_present_today:
                             master_df.at[index, 'Total Attendance'] += 1
+                            master_df.at[index, date_col_name] = "P" # Present ('P') mark karenge us date mein
                                 
-                    # Collect leftover unmatched names
                     for record in daily_records:
                         if record['raw'] not in matched_in_this_file:
-                            all_unmatched_names.append(record['raw'])
+                            # NAYA: Unmatched naam ke aage file ka naam bhi dikhayenge taaki pata chale galti kis din hui
+                            all_unmatched_names.append(f"{record['raw']} (Found in: {file.name})")
                             
                 else:
                     st.warning(f"File {file.name} mein 'Name' wala koi column nahi mila.")
 
-            st.success("Attendance successfully calculate ho gayi hai! 🎉")
+            st.success("Saari files successfully compile ho gayi hain! 🎉")
             
-            # --- CALCULATING PRESENT & ABSENT ---
             total_students = len(master_df)
-            present_today = (master_df['Total Attendance'] > 0).sum()
-            absent_today = total_students - present_today
             
+            # --- METRICS UPDATE ---
+            # Jab bahut saari files aayengi, toh "Today Absent" ka logic badalna padega
             col1, col2 = st.columns(2)
             with col1:
-                st.metric(label="🟢 Total Present", value=f"{present_today} / {total_students}")
+                st.metric(label="📁 Total Files Compiled", value=f"{len(daily_files)}")
             with col2:
-                st.metric(label="🔴 Total Absent", value=f"{absent_today} / {total_students}")
+                st.metric(label="👥 Total Students in Master", value=f"{total_students}")
             
-            # --- Absent Students Dropdown ---
-            if absent_today > 0:
-                absent_df = master_df[master_df['Total Attendance'] == 0]
-                with st.expander("🔴 Click here to view Absent Students List"):
-                    for _, row in absent_df.iterrows():
-                        st.write(f"❌ **{row.get('Student Name', 'Unknown')}** (ID: {row.get('pariticipant_id', 'N/A')})")
-            
-            # --- NAYA CODE: Unmatched Names Dropdown ---
-            unique_unmatched = list(set(all_unmatched_names)) # Remove duplicates
+            unique_unmatched = list(set(all_unmatched_names)) 
             if unique_unmatched:
-                with st.expander(f"⚠️ Unmatched Names (Daily file m hain, par Master m nahi): {len(unique_unmatched)}"):
-                    st.write("Yeh naam Master sheet se match nahi hue (Guest, teacher, ya extra text ho sakte hain):")
+                with st.expander(f"⚠️ Unmatched Names Across All Files ({len(unique_unmatched)})"):
+                    st.write("Yeh naam Master sheet se match nahi hue:")
                     for u_name in unique_unmatched:
                         st.write(f"❓ {u_name}")
-            # ---------------------------------------------
 
             st.dataframe(master_df) 
 
             csv = master_df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="Download Final Report",
+                label="Download Compiled Report",
                 data=csv,
-                file_name='Final_Attendance_Report.csv',
+                file_name='Compiled_Datewise_Attendance.csv',
                 mime='text/csv',
             )
             
