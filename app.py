@@ -125,24 +125,27 @@ if st.button("Calculate Attendance"):
             present_today = (master_df['Total Attendance'] > 0).sum()
             absent_today = total_students - present_today
             
-            # --- NAYA CODE: Metrics in 2 Columns ---
             col1, col2 = st.columns(2)
             with col1:
                 st.metric(label="🟢 Total Present", value=f"{present_today} / {total_students}")
             with col2:
                 st.metric(label="🔴 Total Absent", value=f"{absent_today} / {total_students}")
             
-            # --- NAYA CODE: Absent Students List (Dropdown) ---
+            # --- Absent Students Dropdown ---
             if absent_today > 0:
                 absent_df = master_df[master_df['Total Attendance'] == 0]
                 with st.expander("🔴 Click here to view Absent Students List"):
                     for _, row in absent_df.iterrows():
                         st.write(f"❌ **{row.get('Student Name', 'Unknown')}** (ID: {row.get('pariticipant_id', 'N/A')})")
             
-            # Unmatched names warning
-            if all_unmatched_names:
-                st.warning("⚠️ Neeche diye gaye naam Master list se match nahi hue:")
-                st.write(list(set(all_unmatched_names))) 
+            # --- NAYA CODE: Unmatched Names Dropdown ---
+            unique_unmatched = list(set(all_unmatched_names)) # Remove duplicates
+            if unique_unmatched:
+                with st.expander(f"⚠️ Unmatched Names (Daily file m hain, par Master m nahi): {len(unique_unmatched)}"):
+                    st.write("Yeh naam Master sheet se match nahi hue (Guest, teacher, ya extra text ho sakte hain):")
+                    for u_name in unique_unmatched:
+                        st.write(f"❓ {u_name}")
+            # ---------------------------------------------
 
             st.dataframe(master_df) 
 
