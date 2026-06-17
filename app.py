@@ -15,6 +15,7 @@ daily_files = st.file_uploader("Daily CSV files upload karein", type=['csv'], ac
 if st.button("Calculate Attendance"):
     if master_file is not None and len(daily_files) > 0:
         try:
+            # File reading
             if master_file.name.endswith('.csv'):
                 master_df = pd.read_csv(master_file)
             else:
@@ -43,6 +44,7 @@ if st.button("Calculate Attendance"):
                     cleaned_to_raw_map = {}
                     
                     # SUPER CLEANING: Sirf alphabets aur numbers rakhenge
+                    # Matalab '1-Anirudh-004' ban jayega '1anirudh004'
                     for raw in raw_names:
                         if raw:
                             clean_name = re.sub(r'[^a-z0-9]', '', str(raw).lower())
@@ -53,44 +55,39 @@ if st.button("Calculate Attendance"):
                         p_id = str(row.get('pariticipant_id', '')).replace('nan', '').strip().lower() 
                         
                         last_3 = p_id[-3:] if len(p_id) >= 3 else p_id
-                        first_name = name.split()[0] if " " in name else name
+                        name_parts = name.split()
+                        first_name = name_parts[0] if name_parts else name
+                        first_4 = first_name[:4] if len(first_name) >= 4 else first_name
                         name_no_space = name.replace(" ", "")
-                        
-                        # 1. Without ID targets (Safe for exact match)
-                        valid_exact_only = set([name_no_space, first_name])
-                        for part in name.split():
-                            valid_exact_only.add(part)
-
-                        # 2. With ID targets (Safe for substring match like abhi046)
-                        valid_with_id = set()
-                        valid_with_id.add(f"{name_no_space}{last_3}")
-                        valid_with_id.add(f"{first_name}{last_3}")
-                        if len(first_name) >= 4: valid_with_id.add(f"{first_name[:4]}{last_3}") # First 4 chars + ID
-                        if len(first_name) >= 5: valid_with_id.add(f"{first_name[:5]}{last_3}") # First 5 chars + ID
 
                         student_matched = False
                         
                         for clean_name in cleaned_to_raw_map.keys():
-                            # Condition 1: Exact Name Match (bina ID ke aaye bacho ke liye)
-                            if clean_name in valid_exact_only:
-                                student_matched = True
-                                matched_in_this_file.add(clean_name)
-                                break
-                            
-                            # Condition 2: Short Name/Full Name with ID (e.g., abhi046, akash047)
-                            for v_id in valid_with_id:
-                                if v_id in clean_name:
+                            # LOGIC 1: Agar string mein 3-digit ID present hai
+                            if last_3 in clean_name:
+                                # Name cross-verification (First name ya 4 letters hone chahiye taaki kisi aur ka ID na match ho jaye)
+                                if first_name in clean_name or first_4 in clean_name:
                                     student_matched = True
-                                    matched_in_this_file.add(clean_name)
-                                    break
+                                else:
+                                    # Agar first name nahi, toh last/middle name se verify karein
+                                    for part in name_parts:
+                                        if len(part) >= 3 and part in clean_name:
+                                            student_matched = True
+                                            break
+                            
+                            # LOGIC 2: Bina ID wale bache (Sirf naam daala hai)
+                            if not student_matched:
+                                if clean_name == name_no_space or clean_name == first_name:
+                                    student_matched = True
                                     
                             if student_matched:
-                                break
+                                matched_in_this_file.add(clean_name)
+                                break # Bacha mil gaya, aage search band karein
                                 
                         if student_matched:
                             master_df.at[index, 'Total Attendance'] += 1
                             
-                    # Unmatched names collect karna
+                    # Find unmatched names to show warning
                     for clean_name, raw_name in cleaned_to_raw_map.items():
                         if clean_name not in matched_in_this_file:
                             all_unmatched_names.append(raw_name)
@@ -106,7 +103,7 @@ if st.button("Calculate Attendance"):
             st.metric(label="🟢 Today Total Present Students", value=f"{present_today} / {total_students}")
             
             if all_unmatched_names:
-                st.warning("⚠️ Neeche diye gaye naam Master list se match nahi hue:")
+                st.warning("⚠️ Neeche diye gaye naam Master list se match nahi hue (Yeh teacher ho sakte hain ya typo ho sakta hai):")
                 st.write(list(set(all_unmatched_names))) 
 
             st.dataframe(master_df) 
